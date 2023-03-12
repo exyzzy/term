@@ -39,6 +39,14 @@ var vt100EscapeCodes = EscapeCodes{
 // Terminal contains the state for running a VT100 terminal that is capable of
 // reading lines of input.
 type Terminal struct {
+	// KeypressCallback, if non-null, is called for each keypress from t.readLine()
+	// and never internally calls t.handleKey(), so that all the keys trapped by
+	// t.handleKey() are now passed through.It is a complete pass through for keypresses.
+	// AutoCompleteCallback will never be called if KeypressCallback is non-null
+	// Once initiated by a single call to t.Readline(), Terminal does not return until
+	// KeypressCallback returns true.
+	KeypressCallback func(key rune) bool
+
 	// AutoCompleteCallback, if non-null, is called for each keypress with
 	// the full input line and the current position of the cursor (in
 	// bytes, as an index into |line|). If it returns ok=false, the key
@@ -759,7 +767,14 @@ func (t *Terminal) readLine() (line string, err error) {
 			if !t.pasteActive {
 				lineIsPasted = false
 			}
-			line, lineOk = t.handleKey(key)
+			if t.KeypressCallback != nil {
+				t.lock.Unlock()
+				lineOk = t.KeypressCallback(key)
+				t.lock.Lock()
+
+			} else {
+				line, lineOk = t.handleKey(key)
+			}
 		}
 		if len(rest) > 0 {
 			n := copy(t.inBuf[:], rest)
